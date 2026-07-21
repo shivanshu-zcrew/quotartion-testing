@@ -48,8 +48,7 @@
     "sanitize-html": "^2.17.6",
     "sharp": "^0.34.5",
     "winston": "^3.19.0",
-    "winston-daily-rotate-file": "^5.0.0",
-    "xlsx": "^0.18.5"
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

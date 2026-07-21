@@ -28,7 +28,7 @@ const mongoose = require('mongoose');
 const dotenv   = require('dotenv');
 const path     = require('path');
 const fs       = require('fs');
-const xlsx     = require('xlsx');
+const ExcelJS  = require('exceljs');
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
@@ -102,6 +102,56 @@ function round3(n) {
 }
 
 /**
+ * Extract a plain scalar from an ExcelJS cell value — unwraps rich text,
+ * formula results, and hyperlink objects down to the value xlsx's
+ * sheet_to_json used to hand back directly.
+ */
+function cellScalar(value) {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value;
+  if (typeof value === 'object') {
+    if (Array.isArray(value.richText)) return value.richText.map(t => t.text).join('');
+    if ('result' in value) return value.result ?? '';
+    if ('text' in value) return value.text;
+    return '';
+  }
+  return value;
+}
+
+/**
+ * Read the first worksheet into an array of plain row objects keyed by
+ * the header row — mirrors xlsx's sheet_to_json(ws, { defval: '' }).
+ */
+async function readRowsFromExcel(filePath) {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return [];
+
+  const headers = [];
+  worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+    headers[colNumber] = String(cellScalar(cell.value) ?? '').trim();
+  });
+
+  const rows = [];
+  for (let r = 2; r <= worksheet.rowCount; r++) {
+    const row = worksheet.getRow(r);
+    const obj = {};
+    let hasAny = false;
+
+    headers.forEach((header, colNumber) => {
+      if (!header) return;
+      const value = cellScalar(row.getCell(colNumber).value);
+      if (value !== '') hasAny = true;
+      obj[header] = value;
+    });
+
+    if (hasAny) rows.push(obj);
+  }
+  return rows;
+}
+
+/**
  * Flexible column reader — tries exact match first, then case/space-insensitive.
  * Pass candidate names in order of preference.
  */
@@ -128,9 +178,7 @@ async function run() {
 
   // ── Parse Excel ──────────────────────────────────────────────────────────
   console.log(`📂  Reading: ${path.resolve(EXCEL_FILE)}`);
-  const wb   = xlsx.readFile(EXCEL_FILE, { cellDates: true });
-  const ws   = wb.Sheets[wb.SheetNames[0]];
-  const rows = xlsx.utils.sheet_to_json(ws, { defval: '' });
+  const rows = await readRowsFromExcel(EXCEL_FILE);
 
   if (rows.length === 0) {
     console.error('❌  No data rows found in the first sheet.');
