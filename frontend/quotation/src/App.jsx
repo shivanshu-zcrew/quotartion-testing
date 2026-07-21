@@ -1,20 +1,20 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams, useLocation } from 'react-router-dom';
 import { useAppStore, useInitializeApp } from './services/store';
 import { getHomePath } from './services/api';
 
-import HomeScreen from './page/HomeScreen';
-import CustomersScreen from './page/CustomersScreen';
-import ItemsScreen from './page/ItemsScreen';
-import QuotationScreen from './page/QuotationScreen';
-import ViewQuotationScreen from './page/ViewQuotationScreen';
-import LoginScreen from './page/LoginScreen';
-import RegisterScreen from './page/RegisterScreen';
-import AdminDashboard from './page/AdminDashboard';
-import OpsDashboard from './page/OperManagerDashboard';
-import UserManagementScreen from './page/UserManagementScreen';
-import UserQuotationStatsPage from './page/UserQuotationStatsPage';
-import CompanyManagementScreen from './page/CompanyManagementScreen';
+const HomeScreen = lazy(() => import('./page/HomeScreen'));
+const CustomersScreen = lazy(() => import('./page/CustomersScreen'));
+const ItemsScreen = lazy(() => import('./page/ItemsScreen'));
+const QuotationScreen = lazy(() => import('./page/QuotationScreen'));
+const ViewQuotationScreen = lazy(() => import('./page/ViewQuotationScreen'));
+const LoginScreen = lazy(() => import('./page/LoginScreen'));
+const RegisterScreen = lazy(() => import('./page/RegisterScreen'));
+const AdminDashboard = lazy(() => import('./page/AdminDashboard'));
+const OpsDashboard = lazy(() => import('./page/OperManagerDashboard'));
+const UserManagementScreen = lazy(() => import('./page/UserManagementScreen'));
+const UserQuotationStatsPage = lazy(() => import('./page/UserQuotationStatsPage'));
+const CompanyManagementScreen = lazy(() => import('./page/CompanyManagementScreen'));
 
 const getUser = () => useAppStore.getState().user;
 
@@ -195,22 +195,24 @@ function AppContent() {
     <>
       {loading && <div style={S.loadingBar} />}
       <div style={S.container}>
-        <Routes>
-          <Route path="/login" element={<GuestOnly><LoginRoute /></GuestOnly>} />
-          <Route path="/register" element={<GuestOnly><RegisterRoute /></GuestOnly>} />
-          <Route path="/home" element={<RequireCreator><HomeScreenRoute /></RequireCreator>} />
-          <Route path="/customers" element={<RequireAuth><CustomersRoute /></RequireAuth>} />
-          <Route path="/items" element={<RequireAuth><ItemsRoute /></RequireAuth>} />
-          <Route path="/quotation/new" element={<RequireAuth><QuotationNewRoute /></RequireAuth>} />
-          <Route path="/quotation/:id" element={<RequireAuth><ViewQuotationRoute /></RequireAuth>} />
-          <Route path="/ops" element={<RequireOpsManager><OpsDashboardRoute /></RequireOpsManager>} />
-          <Route path="/admin" element={<RequireAdmin><AdminDashboardRoute /></RequireAdmin>} />
-          <Route path="/admin/users" element={<RequireAdmin><UserManagementScreenWithBack /></RequireAdmin>} />
-          <Route path="/admin/user-stats" element={<RequireAdmin><UserQuotationStatsPage /></RequireAdmin>} />
-          <Route path="/admin/companies" element={<RequireAdmin><CompanyManagementScreenWithBack /></RequireAdmin>} />
-          <Route path="/" element={<RootRedirect />} />
-          <Route path="*" element={<RootRedirect />} />
-        </Routes>
+        <Suspense fallback={<div style={S.loadingBar} />}>
+          <Routes>
+            <Route path="/login" element={<GuestOnly><LoginRoute /></GuestOnly>} />
+            <Route path="/register" element={<GuestOnly><RegisterRoute /></GuestOnly>} />
+            <Route path="/home" element={<RequireCreator><HomeScreenRoute /></RequireCreator>} />
+            <Route path="/customers" element={<RequireAuth><CustomersRoute /></RequireAuth>} />
+            <Route path="/items" element={<RequireAuth><ItemsRoute /></RequireAuth>} />
+            <Route path="/quotation/new" element={<RequireAuth><QuotationNewRoute /></RequireAuth>} />
+            <Route path="/quotation/:id" element={<RequireAuth><ViewQuotationRoute /></RequireAuth>} />
+            <Route path="/ops" element={<RequireOpsManager><OpsDashboardRoute /></RequireOpsManager>} />
+            <Route path="/admin" element={<RequireAdmin><AdminDashboardRoute /></RequireAdmin>} />
+            <Route path="/admin/users" element={<RequireAdmin><UserManagementScreenWithBack /></RequireAdmin>} />
+            <Route path="/admin/user-stats" element={<RequireAdmin><UserQuotationStatsPage /></RequireAdmin>} />
+            <Route path="/admin/companies" element={<RequireAdmin><CompanyManagementScreenWithBack /></RequireAdmin>} />
+            <Route path="/" element={<RootRedirect />} />
+            <Route path="*" element={<RootRedirect />} />
+          </Routes>
+        </Suspense>
       </div>
     </>
   );

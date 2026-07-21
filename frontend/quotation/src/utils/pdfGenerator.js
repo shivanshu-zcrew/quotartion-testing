@@ -1,7 +1,7 @@
 import { imageToBase64 } from './imageUtils';
 import { numberToWords } from './numberToWords';
 import { fmtDate } from './formatters';
-import headerImage from '../assets/header.png';
+// import headerImage from '../assets/header.png';
 import { quotationAPI } from '../services/api';
 import { sanitizeTermsHtml } from './sanitizeTermsHtml';
 
@@ -501,9 +501,6 @@ export const buildPDFHTML = async (quotation, options = {}) => {
   const approvedByEmail = quotation.approvedBy?.email || '';
   const approvedAt = quotation.approvedAt ? fmtDate(quotation.approvedAt) : '—';
 
-  // Convert header image to base64
-  const headerBase64 = await imageToBase64(headerImage);
-  
   // Process items with duplicate prevention
   const itemsWithImages = await Promise.all(
     items.map(async (item) => {
@@ -698,12 +695,6 @@ export const buildPDFHTML = async (quotation, options = {}) => {
 </head>
 <body>
   <div class="container">
-    <!--
-    <div style="width:100%;height:140px;margin-bottom:24px;display:flex;align-items:center;justify-content:center;background:#f8fafc;overflow:hidden;">
-      ${headerBase64 ? `<img src="${headerBase64}" style="width:100%;height:100%;object-fit:contain;padding:10px;" />` : `<div style="font-size:24px;font-weight:bold;">YOUR COMPANY LOGO</div>`}
-    </div>
-    -->
-
     <!-- Title Row -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #000;padding-bottom:16px;margin-bottom:16px;">
       <div style="text-align:center;flex:1;">
