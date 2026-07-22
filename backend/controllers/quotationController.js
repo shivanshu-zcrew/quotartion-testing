@@ -133,9 +133,17 @@ const getSignedFileUrl = async (key, expiresIn = 3600) => {
 };
 
 // ─────────────────────────────────────────────────────────────
-// Shared Puppeteer browser — one instance, auto-reconnect
+// Shared Puppeteer browser — one instance, auto-reconnect, and
+// proactively recycled after BROWSER_MAX_PDFS renders or
+// BROWSER_MAX_AGE_MS uptime (whichever comes first) to bound the
+// slow memory growth long-lived Chromium processes are prone to,
+// rather than only recovering after a crash.
 // ─────────────────────────────────────────────────────────────
 let _browser = null;
+let _browserLaunchedAt = 0;
+let _browserPdfCount = 0;
+const BROWSER_MAX_PDFS = parseInt(process.env.BROWSER_MAX_PDFS || '50', 10);
+const BROWSER_MAX_AGE_MS = parseInt(process.env.BROWSER_MAX_AGE_MS || String(2 * 60 * 60 * 1000), 10);
 
 // ─────────────────────────────────────────────────────────────
 // PDF semaphore — caps concurrent Puppeteer pages so the server
@@ -174,6 +182,30 @@ function releasePdfSlot() {
   } else _pdfActive--;
 }
 
+// ─────────────────────────────────────────────────────────────
+// Image semaphore — a single PDF can reference many item/terms
+// images, each fetched + sharp-compressed on demand as Puppeteer
+// requests them. Without a cap, a large quotation (or several
+// concurrent PDF renders) can trigger dozens of simultaneous
+// fetch+compress operations competing for memory. This limits
+// concurrency globally, across all in-flight renders.
+// ─────────────────────────────────────────────────────────────
+const IMAGE_MAX_CONCURRENT = parseInt(process.env.PDF_IMAGE_MAX_CONCURRENT || '6', 10);
+let _imageActive = 0;
+const _imageQueue = [];
+
+function acquireImageSlot() {
+  return new Promise((resolve) => {
+    if (_imageActive < IMAGE_MAX_CONCURRENT) { _imageActive++; resolve(); }
+    else _imageQueue.push(resolve);
+  });
+}
+
+function releaseImageSlot() {
+  if (_imageQueue.length > 0) _imageQueue.shift()();
+  else _imageActive--;
+}
+
 exports.getPDFMetrics = async (req, res) => {
   const metrics = browserPool?.getMetrics() || {};
   const memory = process.memoryUsage();
@@ -192,7 +224,17 @@ exports.getPDFMetrics = async (req, res) => {
 
 
 const getBrowser = async () => {
-  if (_browser?.isConnected()) return _browser;
+  if (_browser?.isConnected()) {
+    const tooManyPdfs = _browserPdfCount >= BROWSER_MAX_PDFS;
+    const tooOld = (Date.now() - _browserLaunchedAt) >= BROWSER_MAX_AGE_MS;
+    if (tooManyPdfs || tooOld) {
+      logger.info(`Recycling Puppeteer browser (pdfs=${_browserPdfCount}, ageMin=${Math.round((Date.now() - _browserLaunchedAt) / 60000)})`);
+      await _browser.close().catch(() => {});
+      _browser = null;
+    } else {
+      return _browser;
+    }
+  }
 
   try {
     _browser = await puppeteer.launch({
@@ -204,25 +246,17 @@ const getBrowser = async () => {
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--no-zygote',
-        '--single-process',
       ],
     });
 
-  //    _browser = await puppeteer.launch({
-  //   headless: true,
-  //   args: [
-  //     '--no-sandbox',
-  //     '--disable-setuid-sandbox',
-  //     '--disable-dev-shm-usage',
-  //     '--disable-gpu',
-  //   ],
-  // });
-  
-    _browser.on('disconnected', () => { 
+    _browserLaunchedAt = Date.now();
+    _browserPdfCount = 0;
+
+    _browser.on('disconnected', () => {
       _browser = null;
       logger.warn('Puppeteer browser disconnected');
     });
-    
+
     return _browser;
   } catch (error) {
     logger.error(`Puppeteer browser launch error: ${error.message}`);
@@ -2011,6 +2045,7 @@ exports.generatePDF = async (req, res) => {
       const type = req.resourceType();
 
       if (type === 'image') {
+        await acquireImageSlot();
         try {
           const response = await fetch(req.url(), { signal: AbortSignal.timeout(10_000) });
           if (!response.ok) throw new Error(`status ${response.status}`);
@@ -2023,6 +2058,8 @@ exports.generatePDF = async (req, res) => {
         } catch (err) {
           logger.error(`PDF image fetch/compress failed for ${req.url()}: ${err.message}`);
           req.continue();
+        } finally {
+          releaseImageSlot();
         }
         return;
       }
@@ -2038,6 +2075,7 @@ exports.generatePDF = async (req, res) => {
 
     await page.close();
     page = null;
+    _browserPdfCount++;
 
     if (Buffer.from(pdfBuffer).slice(0, 5).toString() !== '%PDF-') throw new Error('Puppeteer returned an invalid PDF buffer');
 
