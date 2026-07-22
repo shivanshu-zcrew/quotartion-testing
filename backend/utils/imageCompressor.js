@@ -10,6 +10,42 @@ class ImageCompressor {
   }
 
   /**
+   * Resize + re-encode a raw image buffer. Returns { buffer, mimeType }.
+   */
+  async compressBuffer(buffer, mimeType, options = {}) {
+    let sharpInstance = sharp(buffer);
+    const metadata = await sharpInstance.metadata();
+
+    const maxW = options.maxWidth || this.maxWidth;
+    const maxH = options.maxHeight || this.maxHeight;
+    const quality = options.quality || this.quality;
+
+    if (metadata.width > maxW || metadata.height > maxH) {
+      sharpInstance = sharpInstance.resize(maxW, maxH, {
+        fit: 'inside',
+        withoutEnlargement: true
+      });
+    }
+
+    let outputBuffer;
+    let outputMimeType = mimeType;
+
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
+      outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
+    } else if (mimeType.includes('png')) {
+      outputBuffer = await sharpInstance.png({ quality, compressionLevel: 9 }).toBuffer();
+    } else if (mimeType.includes('webp')) {
+      outputBuffer = await sharpInstance.webp({ quality }).toBuffer();
+    } else {
+      // Convert other formats to JPEG
+      outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
+      outputMimeType = 'image/jpeg';
+    }
+
+    return { buffer: outputBuffer, mimeType: outputMimeType };
+  }
+
+  /**
    * Compress a single base64 image
    */
   async compressBase64Image(base64String, options = {}) {
@@ -33,40 +69,7 @@ class ImageCompressor {
         return base64String;
       }
 
-      // Start compression
-      let sharpInstance = sharp(buffer);
-      const metadata = await sharpInstance.metadata();
-
-      // Resize if needed
-      let width = metadata.width;
-      let height = metadata.height;
-      
-      const maxW = options.maxWidth || this.maxWidth;
-      const maxH = options.maxHeight || this.maxHeight;
-      
-      if (width > maxW || height > maxH) {
-        sharpInstance = sharpInstance.resize(maxW, maxH, {
-          fit: 'inside',
-          withoutEnlargement: true
-        });
-      }
-
-      // Determine output format and compress
-      let outputBuffer;
-      let outputMimeType = mimeType;
-      const quality = options.quality || this.quality;
-
-      if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
-        outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
-      } else if (mimeType.includes('png')) {
-        outputBuffer = await sharpInstance.png({ quality, compressionLevel: 9 }).toBuffer();
-      } else if (mimeType.includes('webp')) {
-        outputBuffer = await sharpInstance.webp({ quality }).toBuffer();
-      } else {
-        // Convert other formats to JPEG
-        outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
-        outputMimeType = 'image/jpeg';
-      }
+      const { buffer: outputBuffer, mimeType: outputMimeType } = await this.compressBuffer(buffer, mimeType, options);
 
       // Convert back to base64
       const compressedBase64 = `data:${outputMimeType};base64,${outputBuffer.toString('base64')}`;

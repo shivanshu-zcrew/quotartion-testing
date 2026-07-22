@@ -2007,8 +2007,26 @@ exports.generatePDF = async (req, res) => {
     page = await browser.newPage();
 
     await page.setRequestInterception(true);
-    page.on('request', (req) => {
+    page.on('request', async (req) => {
       const type = req.resourceType();
+
+      if (type === 'image') {
+        try {
+          const response = await fetch(req.url(), { signal: AbortSignal.timeout(10_000) });
+          if (!response.ok) throw new Error(`status ${response.status}`);
+          const buffer = Buffer.from(await response.arrayBuffer());
+          const contentType = response.headers.get('content-type') || 'image/jpeg';
+          const { buffer: compressed, mimeType } = await imageCompressor.compressBuffer(buffer, contentType, {
+            maxWidth: 800, maxHeight: 800, quality: 75,
+          });
+          req.respond({ status: 200, contentType: mimeType, body: compressed });
+        } catch (err) {
+          logger.error(`PDF image fetch/compress failed for ${req.url()}: ${err.message}`);
+          req.continue();
+        }
+        return;
+      }
+
       if (['stylesheet', 'font', 'media', 'script', 'fetch', 'xhr', 'websocket', 'other'].includes(type)) req.abort();
       else req.continue();
     });

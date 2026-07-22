@@ -1,4 +1,3 @@
-import { imageToBase64 } from './imageUtils';
 import { numberToWords } from './numberToWords';
 import { fmtDate } from './formatters';
 // import headerImage from '../assets/header.png';
@@ -255,25 +254,14 @@ const processItemImages = async (item, newImages = {}) => {
     }
   }
   
-  // Convert to base64
-  const base64Images = await Promise.all(
-    imageSources.map(async (source) => {
-      try {
-        return await imageToBase64(source);
-      } catch (err) {
-        console.error(`Failed to convert image:`, err.message);
-        return null;
-      }
-    })
-  );
-  
-  const validBase64 = base64Images.filter(Boolean);
-  
+  // Image sources (URLs or already-base64 data URIs) are passed through as-is —
+  // the backend's PDF renderer fetches and compresses remote images itself,
+  // avoiding a browser-side canvas/CORS dependency on S3.
   const { description } = getItemDetails(item);
-  
-  return { 
-    ...item, 
-    _b64Images: validBase64,
+
+  return {
+    ...item,
+    _b64Images: imageSources,
     description,
     quantity: Number(item.quantity) || 1,
     unitPrice: Number(item.unitPrice) || 0
@@ -347,33 +335,15 @@ const buildTermsImagesHTML = async (termsImages = []) => {
   if (processedImages.length === 0) {
     return '';
   }
-  
-  // Convert to base64
-  const imagesWithBase64 = [];
-  
-  for (const img of processedImages) {
-    try {
-      const base64Url = await imageToBase64(img.url);
-      if (base64Url) {
-        imagesWithBase64.push({ ...img, base64: base64Url });
-      }
-    } catch (error) {
-      console.error('Failed to convert terms image to base64:', error);
-    }
-  }
-  
-  if (imagesWithBase64.length === 0) {
-    return '';
-  }
-  
+
   // Build HTML with 2 images per row
   let imagesHTML = '<div style="margin-top:16px;">';
   imagesHTML += '<div style="display:grid;grid-template-columns:repeat(2, 1fr);gap:16px;">';
-  
-  for (const img of imagesWithBase64) {
+
+  for (const img of processedImages) {
     imagesHTML += `
       <div style="text-align:center;">
-        <img src="${img.base64}" style="width:100%;height:180px;border-radius:4px;object-fit:cover;" />
+        <img src="${img.url}" style="width:100%;height:180px;border-radius:4px;object-fit:cover;" />
        </div>
     `;
   }
